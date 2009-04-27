@@ -138,5 +138,61 @@ class ImportContactsController(NSWindowController):
         self.window().setFrame_display_animate_(frame, True, True)
 
 
-class ContactListController(NSObject):
-    app = objc.ivar('app')
+class EndpointStringValueTransformer(NSValueTransformer):
+
+    def transformedValueClass(self):
+        return NSString
+
+    def transformedValue_(self, endpoint):
+        if endpoint is not None:
+            return "XXX"
+        return None
+
+
+class CertificateFingerprintValueTransformer(NSValueTransformer):
+
+    def transformedValueClass(self):
+        return NSString
+
+    def transformedValue_(self, cert):
+        if cert is not None:
+            return cert.digest()
+        return None
+
+            
+class ContactStatusImageValueTransformer(NSValueTransformer):
+
+    def init(self):
+        self = NSValueTransformer.init(self)
+        self.connectedImage = None
+        return self
+        
+    def transformedValueClass(self):
+        return NSImage
+
+    def transformedValue_(self, value):
+        if self.connectedImage is None:
+            self.connectedImage = NSImage.imageNamed_(
+                'status-connected'
+                )
+        return self.connectedImage
+        
+
+        
+class ContactListController(NSWindowController):
+    app = objc.IBOutlet()
+    arrayController = objc.IBOutlet()
+
+    def initWithApp_(self, app):
+        self = NSWindowController.initWithWindowNibName_owner_(
+            self, "ContactList", self)
+        self.app = app
+        return self
+
+    @objc.IBAction
+    def export_(self, sender):
+        pass
+
+    @objc.IBAction
+    def connect_(self, sender):
+        pass

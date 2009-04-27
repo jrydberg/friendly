@@ -6,16 +6,41 @@ Usage:
 """
 
 from setuptools import setup
+import os, os.path
+
+
+frameworksSearchPaths = ('/System/Library/Frameworks',
+                         '/System/Library/PrivateFrameworks',
+                         os.path.expanduser('~/Library/Frameworks'))
+
+
+def findFramework(framework):
+    """
+    Search for the given framework and return absolute path.
+    """
+    for searchpath in frameworksSearchPaths:
+        fullFrameworkName = "%s.framework" % (framework,)
+        frameworkPath = os.path.join(searchpath, fullFrameworkName)
+        print "trying", frameworkPath
+        if os.path.exists(frameworkPath):
+            return frameworkPath
+    raise SystemError("framework %s could not be found" % framework)
+
+
+frameworks = ('BWToolkitFramework', 'ScopeBar')
 
 APP = ['main.py']
-DATA_FILES = ['English.lproj']
+DATA_FILES = ['English.lproj', 'Images/Friendly.icns',
+              'Images/status-connected.tif',
+              'Images/status-available.tif']
 OPTIONS = {
     'argv_emulation': True,
-    'frameworks': ['BWToolkitFramework.framework']
+    'frameworks': [findFramework(f) for f in frameworks],
+    'plist': 'Info.plist'
     }
 
 setup(
-    name="Foo",
+    name="Friendly",
     app=APP,
     data_files=DATA_FILES,
     options={'py2app': OPTIONS},

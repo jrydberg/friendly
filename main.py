@@ -1,7 +1,7 @@
 from twisted.internet._threadedselect import install
 reactor = install()
 
-import objc, Foundation, AppKit, os
+import objc, Foundation, AppKit, os, MGScopeBar
 from PyObjCTools import AppHelper
 
 def loadFramework(frameworkName):
@@ -17,8 +17,10 @@ def loadFramework(frameworkName):
 #    )
 #objc.loadBundle('BWToolkitFramework', globals(), bundle_path=bundle_path) 
 loadFramework('BWToolkitFramework')
-loadFramework('Automator')
-    
+
+objc.loadBundle("Automator", globals(),
+                bundle_path="/System/Library/Frameworks/Automator.framework")
+
 # import modules containing classes required to start application and
 # load MainMenu.nib:
 from friendly import app, master, account, contacts
