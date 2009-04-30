@@ -1,140 +1,122 @@
+# This file is part of Friendly.
+# Copyright (c) 2009 Johan Rydberg <johan.rydberg@gmail.com>
 #
+# Permission is hereby granted, free of charge, to any person
+# obtaining a copy of this software and associated documentation
+# files (the "Software"), to deal in the Software without
+# restriction, including without limitation the rights to use,
+# copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following
+# conditions:
 #
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
 #
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+# OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+# HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+# OTHER DEALINGS IN THE SOFTWARE.
 
 from Foundation import *
+from CoreData import NSManagedObject
 from OpenSSL import crypto
-from twisted.internet.ssl import Certificate
+
+from twisted.internet import ssl
 
 
-class Contact(NSObject):
+class Certificate(NSObject, ssl.Certificate):
     """
+    An x509 certificate that can be serialized using a keyed archiver.
     """
-    name = objc.ivar('name')
-    email = objc.ivar('email')
-    cert = objc.ivar('cert')
-    status = objc.ivar('status')
-    account = objc.ivar('account')
-    endpont = objc.ivar('endpoint')
+
+    @initWithSuper
+    def initWithNativeCertificate_(self, original):
+        self.__init__(original)
     
-    def initWithName_andEmail_(self, name, email):
-        self = NSObject.init(self)
+    def initWithCoder_(self, coder):
+        """
+        Returns an object initialized from data in a given unarchiver.
+
+        @param coder: they keyed unarchiver
+        @rtype: a L{Certificate} instance
+        """
+        self = self.NSObject.initWithCoder_(self, coder)
         if self is None:
             return None
-        self.name = name
-        self.email = email
-        self.cert = None
-        self.status = 1
-        self.account = None
+        data, l = coder.decodeBytesForKey_returnedLength_("certificate", None)
+        self.__init__(crypto.load_certificate(crypto.FILETYPE_ASN1, d))
         return self
+
+    def encodeWithCoder_(self, coder):
+        """
+        Encodes the receiver using a given archiver.
+
+        @param coder: the keyed archiver.
+        """
+        coder.encodeBytes_length_forKey_(self.dump(), "certificate")
+
+
+class PrivateCertificate(NSObject, ssl.PrivateCertificate):
+    """
+    An x509 certificate and private key that can be serialized using a
+    keyed archiver.
+    """
 
     def initWithCoder_(self, coder):
         """
-        Initialize model object with the content from the L{NSCoder}.
+        Returns an object initialized from data in a given unarchiver.
+
+        @param coder: they keyed unarchiver
+        @rtype: a L{PrivateCertificate} instance
         """
-        self = NSObject.init(self)
+        self = self.NSObject.initWithCoder_(self, coder)
         if self is None:
             return None
-        self.account = None
-        self.cert = None
-        self.name = coder.decodeObjectForKey_("name")
-        self.email = coder.decodeObjectForKey_("email")
-        certBytes, lenBytes = coder.decodeBytesForKey_returnedLength_(
-            "cert", None
+        data, l = coder.decodeBytesForKey_returnedLength_("certificate", None)
+        self.__init__(crypto.load_certificate(crypto.FILETYPE_ASN1, d))
+        data, l = coder.decodeBytesForKey_returnedLength_("privateKey", None)
+        return self._setPrivateKey(ssl.KeyPair.load(data))
+
+    def encodeWithCoder_(self, coder):
+        """
+        Encodes the receiver using a given archiver.
+
+        @param coder: the keyed archiver.
+        """
+        coder.encodeBytes_length_forKey_(self.dump(), "certificate")
+        coder.encodeBytes_length_forKey_(self.privateKey.dump(), "privateKey")
+
+    @classmethod 
+    def fromCertificateAndKeyPair(Class, certificateInstance, privateKey):
+        self = Class.alloc().initWithNativeCertificate_(certificateInstance.original)
+        if self is None:
+            return None
+        return self._setPrivateKey(privateKey)
+
+
+class Peer(NSManagedObject):
+    pass
+
+
+class Contact(Peer):
+
+    @staticmethod
+    def newWithName_email_inManagedObjectContext_(name, email,
+                                                  managedObjectContext):
+        contact = NSEntityDescription.insertNewObjectForEntityForName_inManagedObjectContext_(
+            "Contact", managedObjectContext
             )
-        print lenBytes
-        if lenBytes:
-            self.cert = Certificate.load(certBytes)
-        return self
-
-    def encodeWithCoder_(self, coder):
-        """
-        Encode instance with L{NSCoder} provided in coder.
-        """
-        coder.encodeObject_forKey_(self.name, "name")
-        coder.encodeObject_forKey_(self.email, "email")
-        if self.cert is not None:
-            certBytes = self.cert.dump()
-        else:
-            certBytes = ''
-        coder.encodeBytes_length_forKey_(certBytes, "cert")
-        #coder.encodeBytes_length_forKey_(certBytes, len(certBytes), "cert")
-
-    def setCertificate_(self, cert):
-        """
-        Set certificate of peer.
-        """
-        self.cert = cert
+        contact.setName_(name)
+        contact.setEmail_(email)
+        return contact
 
 
-class Account(NSObject):
-    displayName = objc.ivar('displayName')
-    contacts = objc.ivar('contacts')
-    cert = objc.ivar('cert')
+class Account(NSManagedObject):
+    pass
     
-    def init(self):
-        self = NSObject.init(self)
-        if self is None:
-            return None
-        self.displayName = u""
-        self.contacts = NSMutableArray.alloc().initWithCapacity_(0)
-        self.cert = None
-        return self
 
-    def initWithName_andCert_(self, name, cert):
-        """
-        """
-        self = self.init()
-        if self is None:
-            return None
-        self.displayName = name
-        self.cert = cert
-        return self
-        
-    def initWithCoder_(self, coder):
-        """
-        Initialize account model object with the content from the
-        L{NSCoder}.
-        """
-        self = NSObject.init(self)
-        if self is None:
-            return None
-        self.displayName = coder.decodeObjectForKey_("displayName")    
-        self.contacts = coder.decodeObjectForKey_("contacts")
-        if self.contacts is None:
-            self.contacts = NSMutableArray.alloc().initWithCapacity_(0)
-        return self
-        
-    def encodeWithCoder_(self, coder):
-        """
-        Encode account with encoder.
-        """
-        coder.encodeObject_forKey_(self.displayName, "displayName")
-        coder.encodeObject_forKey_(self.contacts, "contacts")
-        
-    def addContact_(self, contact):
-        """
-        Add contact to list of contacts.
-        """
-        self.willChangeValueForKey_('contacts')
-        self.contacts.addObject_(contact)
-        self.didChangeValueForKey_('contacts')
-
-    def removeContact_(self, contact):
-        """
-        Remove contact from list of contacts.
-        """
-        self.willChangeValueForKey_('contacts')
-        self.contacts.removeObject_(contact)
-        self.didChangeValueForKey_('contacts')
-        
-    def hasContactWithEmail_(self, email):
-        """
-        Return C{True} if the account has a contact with the given
-        email.
-        """
-        for contact in self.contacts:
-            if contact.email == email:
-                return True
-        return False
-    
