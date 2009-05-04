@@ -45,7 +45,7 @@ class Certificate(NSObject, ssl.Certificate):
         @param coder: they keyed unarchiver
         @rtype: a L{Certificate} instance
         """
-        self = self.NSObject.initWithCoder_(self, coder)
+        self = NSObject.initWithCoder_(self, coder)
         if self is None:
             return None
         data, l = coder.decodeBytesForKey_returnedLength_("certificate", None)
@@ -67,6 +67,10 @@ class PrivateCertificate(NSObject, ssl.PrivateCertificate):
     keyed archiver.
     """
 
+    @initWithSuper
+    def initWithNativeCertificate_(self, original):
+        self.__init__(original)
+    
     def initWithCoder_(self, coder):
         """
         Returns an object initialized from data in a given unarchiver.
@@ -74,7 +78,7 @@ class PrivateCertificate(NSObject, ssl.PrivateCertificate):
         @param coder: they keyed unarchiver
         @rtype: a L{PrivateCertificate} instance
         """
-        self = self.NSObject.initWithCoder_(self, coder)
+        self = NSObject.initWithCoder_(self, coder)
         if self is None:
             return None
         data, l = coder.decodeBytesForKey_returnedLength_("certificate", None)
@@ -118,5 +122,3 @@ class Contact(Peer):
 
 class Account(NSManagedObject):
     pass
-    
-
