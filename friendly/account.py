@@ -1,8 +1,59 @@
+# This file is part of Friendly.
+# Copyright (c) 2009 Johan Rydberg <johan.rydberg@gmail.com>
+#
+# Permission is hereby granted, free of charge, to any person
+# obtaining a copy of this software and associated documentation
+# files (the "Software"), to deal in the Software without
+# restriction, including without limitation the rights to use,
+# copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following
+# conditions:
+#
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+# OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+# HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+# OTHER DEALINGS IN THE SOFTWARE.
+
 from Foundation import *
 from AppKit import *
 import random
 from twisted.internet import ssl
+
 from friendly.model import Account
+from friendly.utils import initWithSuper
+
+
+class AccountController(NSObject):
+    bindingSupport = None
+
+    @initWithSuper
+    def initWithAccountModel_(self, model):
+        self.model = model
+        # setup bindings to the model
+        self._bind('listenPort', model)
+
+    def _bind(self, key, model):
+        """
+        Binding property to model to property of this controller.
+        """
+        self.bind_toObject_withKeyPath_options_(key, model, key, {})
+
+    def bind_toObject_withKeyPath_options_(self, binding, anObject, keyPath, options):
+        if self.bindingSupport is None:
+            self.bindingSupport = KeyValueBindingSupport(self)
+        self.bindingSupport.bind(binding, anObject, keyPath, options)
+
+    def observeValueForKeyPath_ofObject_change_context_(self, keyPath, anObject,
+                                                         change, context):
+        self.bindingSupport.observe(keyPath, anObject, change)
 
 
 class CreateAccountModel(NSObject):

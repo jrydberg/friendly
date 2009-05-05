@@ -1,6 +1,49 @@
 import objc
 
 
+class KeyValueBindingSupport:
+    """
+    Class that helps the user to implement the
+    NSKeyValueBindingCreation protocol.
+    """
+
+    def __init__(self, instance):
+        self.bindings = {}
+        self.instance = instance
+
+    def bind(self, binding, toObject, keyPath, options):
+        """
+        Establishes binding between the given property C{binding} and
+        the property of the given object specified by C{keyPath}.
+
+        @param realize: True if the binding should be realized now.
+        """
+        toObject.addObserver_forKeyPath_options_context_(self.instance, keyPath, 0, None)
+        self.bindings[(toObject, keyPath)] = binding
+
+    def unbind(self, binding):
+        bindings = list()
+        for (object, keypath), value in self.bindings.iteritems():
+            if value == binding:
+                bindings.append((object, keypath))
+        for object, keypath in bindings:
+            del self.bindings[(object, keypath)]
+
+    def realize(self):
+        """
+        Realize all bindings.
+        """
+        for object, keypath in self.bindings:
+            self.observe(keyPath, object, {})
+
+    def observe(self, keyPath, object, change):
+        try:
+            binding = self.bindings[(object, keyPath)]
+        except IndexError:
+            return
+        self.instance.setValue_forKey_(object.valueForKey_(keyPath), binding)
+
+
 def selector(signature):
     def decorator(fn, signature=signature):
         return objc.selector(fn, signature=signature)
