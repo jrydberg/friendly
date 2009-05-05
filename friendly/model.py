@@ -28,6 +28,8 @@ from OpenSSL import crypto
 
 from twisted.internet import ssl
 
+from friendly.utils import initWithSuper
+
 
 class Certificate(NSObject, ssl.Certificate):
     """

@@ -24,6 +24,7 @@
 
 from Foundation import *
 from AppKit import *
+from CoreData import *
 
 from twisted.internet import reactor
 
@@ -42,16 +43,102 @@ standardDefaults = {
     }
 
 
+class CoreDataCoordinator:
+    """
+    Coordinator for everything that is related to Core Data.
+
+    @ivar modelFile: Absolute path to where the data is stored.
+    """
+    _model = None
+    _storeCoordinator = None
+    _context = None
+
+    def __init__(self, modelFile):
+        self.modelFile = modelFile
+
+    def model(self):
+        """
+        Return the Core Data NS{NSManagedObjectModel}.
+        """
+        if self._model is None:
+            self._model = NSManagedObjectModel.mergedModelFromBundles_(None)
+        return self._model
+
+    def coordinator(self):
+        """
+        Return Core Data persistent store coordinator.
+        """
+        if self._storeCoordinator is None:
+            url = NSURL.fileURLWithPath_(self.modelFile)
+            self._storeCoordinator = NSPersistentStoreCoordinator.alloc()
+            self._storeCoordinator.initWithManagedObjectModel_(self.model())
+            success, error = self._storeCoordinator.addPersistentStoreWithType_configuration_URL_options_error_(
+                NSXMLStoreType, None, url, None, None
+                )
+            assert success, "could not add persistent store"
+        return self._storeCoordinator
+        
+    def context(self):
+        """
+        Return managed object context for this Core Data coordinator.
+        """
+        if self._context is None:
+            self._context = NSManagedObjectContext.alloc().init()
+            self._context.setPersistentStoreCoordinator_(self.coordinator())
+        return self._context
+
+    def save(self, commitEditing=False):
+        if commitEditing:
+            if not self.context().commitEditing():
+                return False
+        if self.context().hasChanges():
+            success, error = self.context().save_(None)
+            if not success:
+                return False
+        return True
+
+
 class FriendlyAppController(NSObject):
     createAccountController = None
     importContactsController = None
     cachedAppSupportFolder = None
     contactListController = None
-
     
     @initWithSuper
     def init(self):
-        self.accounts = []
+        # create the core data coordinator for our data:
+        self._coreDataCoordinator = CoreDataCoordinator(
+            os.path.join(self.applicationSupportFolder(), "Friendly.xml")
+            )
+
+    def applicationWillFinishLaunching_(self, sender):
+        """
+        """
+        # register defaults before anything else
+        defaultsController = NSUserDefaults.standardUserDefaults()
+        defaultsController.registerDefaults_(standardDefaults)
+        # try out the coordinator.
+        context = self.managedObjectContext()
+    
+    def applicationDidFinishLaunching_(self, sender):
+        """
+        Degelate method that informs us that the application finished
+        loading.
+        """
+        NSLog("Application did finish launching.")
+
+    def applicationShouldTerminate_(self, sender):
+        """
+        Notification that the application is about to terminate.
+
+        @return: Whether the application should terminate or not.
+        """
+        if not self._coreDataCoordinator.save(commitEditing=True):
+            return NSTerminateCancel
+        if reactor.running:
+            reactor.stop()
+            return False
+        return NSTerminateNow
 
     # torrent/bundle handling:
 
@@ -104,7 +191,6 @@ class FriendlyAppController(NSObject):
         """
         return self.openFile_withUI_(filename, False)
 
-
     def applicationSupportFolder(self):
         """
         Return directory where application specific data will be
@@ -122,6 +208,26 @@ class FriendlyAppController(NSObject):
                 except OSError:
                     pass
         return self.cachedAppSupportFolder
+
+    # core data:
+
+    def managedObjectContext(self):
+        """
+        Core Data context accessor.
+
+        @rtype: L{NSManagedObjectContext}
+        """
+        return self._coreDataCoordinator.context()
+
+    def windowWillReturnUndoManager_(self, window):
+        """
+        Return undo manager.
+        """
+        return self.managedObjectContext().undoManager()
+        
+    @objc.IBAction
+    def saveAction_(self, sender):
+        self._coreDataCoordinator.save()
 
     def saveAccounts(self):
         """
@@ -193,38 +299,3 @@ class FriendlyAppController(NSObject):
             self.contactListController = \
                 ContactListController.alloc().initWithApp_(self)
         self.contactListController.window().makeKeyAndOrderFront_(self)
-
-
-    def applicationWillFinishLaunching_(self, sender):
-        """
-        """
-        # register defaults before anything else
-        defaultsController = NSUserDefaults.standardUserDefaults()
-        defaultsController.registerDefaults_(standardDefaults)
-
-        # load accounts:
-        self.accounts = NSKeyedUnarchiver.unarchiveObjectWithFile_(
-            os.path.join(self.applicationSupportFolder(), 'accounts.keyarch')
-            )
-        if self.accounts is None:
-            self.accounts = NSMutableArray.alloc().initWithCapacity_(0)
-        for account in self.accounts:
-            for contact in account.contacts:
-                contact.account = account
-
-        self.setContacts_(None)
-
-        #self.didChangeValueForKey_('contacts')
-    
-    def applicationDidFinishLaunching_(self, sender):
-        """
-        Degelate method that informs us that the application finished
-        loading.
-        """
-        NSLog("Application did finish launching.")
-
-    def applicationShouldTerminate_(self, sender):
-        if reactor.running:
-            reactor.stop()
-            return False
-        return True
