@@ -35,6 +35,9 @@ import MGScopeBar
 import objc
 import random
 import time
+import logging
+
+from overlay import utils, log
 
 # import modules containing classes required to start application and
 # load MainMenu.nib:
@@ -45,6 +48,15 @@ if not hasattr(reactor, "seconds"):
     reactor.seconds = seconds
 
 random.seed(time.time())
+
+h = logging.StreamHandler()
+f = logging.Formatter(
+    "%(levelname)s %(asctime)s %(funcName)s %(message)s"
+    )
+h.setFormatter(f)
+
+log.logger.setLevel(logging.DEBUG)
+log.logger.addHandler(h)
 
 # pass control to AppKit
 reactor.interleave(AppHelper.callAfter)
