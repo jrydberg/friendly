@@ -33,6 +33,8 @@ import Foundation
 import AppKit
 import MGScopeBar
 import objc
+import random
+import time
 
 # import modules containing classes required to start application and
 # load MainMenu.nib:
@@ -41,6 +43,8 @@ from friendly import app, master, account, contacts
 if not hasattr(reactor, "seconds"):
     from twisted.python.runtime import seconds
     reactor.seconds = seconds
+
+random.seed(time.time())
 
 # pass control to AppKit
 reactor.interleave(AppHelper.callAfter)
