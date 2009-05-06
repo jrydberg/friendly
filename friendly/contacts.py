@@ -37,6 +37,12 @@ class ImportContactsController(NSWindowController):
             self.app = app
         return self
 
+    def managedObjectContext(self):
+        """
+        Accessor for returning managed object context.
+        """
+        return self.app.managedObjectContext()
+
     def awakeFromNib(self):
         self.disclosureTriangle.setState_(NSOffState)
         self.disclosurePressed_(self.disclosureTriangle)
