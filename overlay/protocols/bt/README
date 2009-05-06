@@ -1,0 +1,8 @@
+This is a modified version of the BitTorrent protocol that can be run
+on top of the overlay.
+
+
+
+* Remaining to do is to figure out if we should send multiple hashes
+  in a single HAVE message, if the peer is choked.
+

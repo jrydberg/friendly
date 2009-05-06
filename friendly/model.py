@@ -23,12 +23,26 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 
 from Foundation import *
-from CoreData import NSManagedObject
+from CoreData import (NSManagedObject, NSFetchRequest, 
+                      NSEntityDescription)
 from OpenSSL import crypto
 
 from twisted.internet import ssl
 
 from friendly.utils import initWithSuper
+
+
+def selfSignedCertificate(serialNumber, **kw):
+    """
+    Create a self signed certificate.
+
+    @rtype: L{PrivateCertificate}
+    """
+    kp = ssl.KeyPair.generate()
+    dn = ssl.DN(**kw)
+    return PrivateCertificate.fromCertificateAndKeyPair(
+        kp.signRequestObject(dn, kp.requestObject(dn), serialNumber), kp
+        )
 
 
 class Certificate(NSObject, ssl.Certificate):
@@ -47,7 +61,7 @@ class Certificate(NSObject, ssl.Certificate):
         @param coder: they keyed unarchiver
         @rtype: a L{Certificate} instance
         """
-        self = NSObject.initWithCoder_(self, coder)
+        self = NSObject.init(self)
         if self is None:
             return None
         data, l = coder.decodeBytesForKey_returnedLength_("certificate", None)
@@ -71,7 +85,7 @@ class PrivateCertificate(NSObject, ssl.PrivateCertificate):
 
     @initWithSuper
     def initWithNativeCertificate_(self, original):
-        self.__init__(original)
+        ssl.PrivateCertificate.__init__(self, original)
     
     def initWithCoder_(self, coder):
         """
@@ -80,11 +94,13 @@ class PrivateCertificate(NSObject, ssl.PrivateCertificate):
         @param coder: they keyed unarchiver
         @rtype: a L{PrivateCertificate} instance
         """
-        self = NSObject.initWithCoder_(self, coder)
+        self = NSObject.init(self)
         if self is None:
             return None
         data, l = coder.decodeBytesForKey_returnedLength_("certificate", None)
-        self.__init__(crypto.load_certificate(crypto.FILETYPE_ASN1, d))
+        ssl.PrivateCertificate.__init__(
+            self, crypto.load_certificate(crypto.FILETYPE_ASN1, data)
+            )
         data, l = coder.decodeBytesForKey_returnedLength_("privateKey", None)
         return self._setPrivateKey(ssl.KeyPair.load(data))
 
@@ -122,5 +138,32 @@ class Contact(Peer):
         return contact
 
 
+def entityFromContext(entityName, context):
+    return NSEntityDescription.entityForName_inManagedObjectContext_(
+        entityName, context)
+
+
 class Account(NSManagedObject):
-    pass
+    """
+    Model object for Account settings.
+    """
+
+    @staticmethod
+    def allAccountsInManagedObjectContext_(context):
+        """
+        Return a sequence of all Account objects in the managed object
+        context.
+        """
+        r = NSFetchRequest.alloc().init()
+        r.setEntity_(entityFromContext("Account", context))
+        objects, error = context.executeFetchRequest_error_(r, None)
+        return objects
+
+    def initAndInsertIntoManagedObjectContext_(self, context):
+        """
+        Initialize new account and given parameters and insert it into
+        the specified context.
+        """
+        return NSManagedObject.initWithEntity_insertIntoManagedObjectContext_(
+            self, entityFromContext("Account", context), context
+            )

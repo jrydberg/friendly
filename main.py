@@ -38,6 +38,10 @@ import objc
 # load MainMenu.nib:
 from friendly import app, master, account, contacts
 
+if not hasattr(reactor, "seconds"):
+    from twisted.python.runtime import seconds
+    reactor.seconds = seconds
+
 # pass control to AppKit
 reactor.interleave(AppHelper.callAfter)
 reactor.addSystemEventTrigger('after', 'shutdown', AppHelper.stopEventLoop)

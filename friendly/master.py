@@ -69,7 +69,7 @@ class MasterListController(NSObject):
     # MGScopeBarDataSource:
 
     def accessoryViewForScopeBar_(self, view):
-        print "GET ACCESSORY", self.accessoryView
+        #print "GET ACCESSORY", self.accessoryView
         return self.accessoryView
     
     def numberOfGroupsInScopeBar_(self, view):

@@ -29,9 +29,13 @@ from CoreData import *
 from twisted.internet import reactor
 
 from friendly.utils import selector, initWithSuper
-from friendly.account import CreateAccountController
+from friendly.account import CreateAccountController, AccountController
 from friendly.contacts import (ImportContactsController,
                                ContactListController)
+from friendly.model import Account
+
+from overlay.protocols.bt import connection
+from overlay.factory import OverlayFactory
 
 from os.path import expanduser
 import objc, os
@@ -41,6 +45,33 @@ import objc, os
 standardDefaults = {
     'defaultDownloadLocation': expanduser("~/Downloads"),
     }
+
+
+
+class TransferFactory(OverlayFactory):
+    """
+    Factory for building L{connection.Connection} protocol instances
+    for a bundle.
+
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    def terminatesProbe(self, q):
+        """
+        Return C{True} if this node terminates the probe for C{q}
+        """
+        return False
+
+    def buildProtocol(self, address):
+        """
+        Build a L{connection.Connection} protocol instance.
+        """
+        #if address.q != self.metainfo.infohash:
+        #    return None
+        #return connection.Connection(self.controller, self.metainfo)
+        return None
 
 
 class CoreDataCoordinator:
@@ -90,10 +121,12 @@ class CoreDataCoordinator:
     def save(self, commitEditing=False):
         if commitEditing:
             if not self.context().commitEditing():
+                print "No commit"
                 return False
         if self.context().hasChanges():
             success, error = self.context().save_(None)
             if not success:
+                print error
                 return False
         return True
 
@@ -110,16 +143,39 @@ class FriendlyAppController(NSObject):
         self._coreDataCoordinator = CoreDataCoordinator(
             os.path.join(self.applicationSupportFolder(), "Friendly.xml")
             )
+        self.accounts = {}
+        self.transferFactory = TransferFactory(self)
+        
+    def startAccountController_(self, model):
+        """
+        Start an Account controller for the given model object.
+        """
+        controller = AccountController.alloc().initWithApp_factory_model_(
+            self, self.transferFactory, model)
+        self.accounts[model] = controller
+
+    def stopAccountController_(self, model):
+        """
+        Stop account controller for the given model object.
+        """
+        controller = self.accounts.pop(model)
+        del controller
 
     def applicationWillFinishLaunching_(self, sender):
         """
+        Delegate method that informs us that the application will
+        finish loading.
         """
         # register defaults before anything else
         defaultsController = NSUserDefaults.standardUserDefaults()
         defaultsController.registerDefaults_(standardDefaults)
-        # try out the coordinator.
+
+        # iterate through all account model objects and create account
+        # controllers for them:
         context = self.managedObjectContext()
-    
+        for account in Account.allAccountsInManagedObjectContext_(context):
+            self.startAccountController_(account)
+
     def applicationDidFinishLaunching_(self, sender):
         """
         Degelate method that informs us that the application finished
@@ -134,9 +190,11 @@ class FriendlyAppController(NSObject):
         @return: Whether the application should terminate or not.
         """
         if not self._coreDataCoordinator.save(commitEditing=True):
+            print "HUH"
             return NSTerminateCancel
         if reactor.running:
             reactor.stop()
+            print "OTHER"
             return False
         return NSTerminateNow
 

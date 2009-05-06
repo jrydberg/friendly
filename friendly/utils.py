@@ -10,8 +10,9 @@ class KeyValueBindingSupport:
     def __init__(self, instance):
         self.bindings = {}
         self.instance = instance
+        self.ignore = list()
 
-    def bind(self, binding, toObject, keyPath, options):
+    def bind(self, binding, toObject, keyPath, options, realize=True):
         """
         Establishes binding between the given property C{binding} and
         the property of the given object specified by C{keyPath}.
@@ -20,6 +21,8 @@ class KeyValueBindingSupport:
         """
         toObject.addObserver_forKeyPath_options_context_(self.instance, keyPath, 0, None)
         self.bindings[(toObject, keyPath)] = binding
+        if realize:
+            self.observe(keyPath, toObject, {})
 
     def unbind(self, binding):
         bindings = list()
@@ -37,11 +40,15 @@ class KeyValueBindingSupport:
             self.observe(keyPath, object, {})
 
     def observe(self, keyPath, object, change):
+        if (object, keyPath) in self.ignore:
+            return
         try:
             binding = self.bindings[(object, keyPath)]
         except IndexError:
             return
+        self.ignore.append((object, keyPath))
         self.instance.setValue_forKey_(object.valueForKey_(keyPath), binding)
+        self.ignore.remove((object, keyPath))
 
 
 def selector(signature):

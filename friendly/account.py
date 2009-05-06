@@ -25,18 +25,76 @@
 from Foundation import *
 from AppKit import *
 import random
-from twisted.internet import ssl
+from twisted.internet import ssl, reactor
+from OpenSSL import SSL, crypto
 
-from friendly.model import Account
-from friendly.utils import initWithSuper
+from overlay.factory import Factory
+from overlay.connector import Connector
+from overlay.connection import Connection
+from overlay.controller import OverlayController
+from overlay.verifier import PublicFriendVerifier
+from overlay.ssl import Connector as SSLConnector, Port, ClientCreator
+
+from friendly.model import Account, selfSignedCertificate
+from friendly.utils import initWithSuper, KeyValueBindingSupport
+
+
+class ContextFactory:
+    """
+    @ivar cert:
+    @type cert: L{PrivateCertificate}
+    """
+
+    def __init__(self, cert):
+        self.cert = cert
+        self._context = None
+
+    def cacheContext(self):
+        ctx = SSL.Context(SSL.TLSv1_METHOD)
+        ctx.use_certificate(self.cert.original) # XXX: should have a
+                                                # getter for this
+        ctx.use_privatekey(self.cert.privateKey.original)
+        verifyFlags = SSL.VERIFY_PEER
+        verifyFlags |= SSL.VERIFY_FAIL_IF_NO_PEER_CERT
+        def _trackVerificationProblems(conn,cert,errno,depth,preverify_ok):
+            # retcode is the answer OpenSSL's default verifier would have
+            # given, had we allowed it to run.
+            print "preverify", preverify_ok
+            return 1 # preverify_ok
+        ctx.set_verify(verifyFlags, _trackVerificationProblems)
+
+        self._context = ctx
+
+    def getContext(self):
+        if not self._context:
+            self.cacheContext()
+        return self._context
+
 
 
 class AccountController(NSObject):
+    model = objc.ivar('model')
+
     bindingSupport = None
+    listeningPort = None
 
     @initWithSuper
-    def initWithAccountModel_(self, model):
+    def initWithApp_factory_model_(self, app, factory, model):
         self.model = model
+
+        # create verifier and context factory
+        self.verifier = PublicFriendVerifier()
+        self.contextFactory = ContextFactory(model.certificate())
+
+        # start the connectot that is responsible for connecting
+        # this peer to other peers
+        self.connector = Connector(self.connectionFactory)
+
+        # create the swarm controller that is responsible for
+        # connecting the overlay through this peer.
+        self.controller = OverlayController('X', self.connector, factory)
+        self.factory = Factory(self.controller, self.verifier)
+
         # setup bindings to the model
         self._bind('listenPort', model)
 
@@ -54,6 +112,36 @@ class AccountController(NSObject):
     def observeValueForKeyPath_ofObject_change_context_(self, keyPath, anObject,
                                                          change, context):
         self.bindingSupport.observe(keyPath, anObject, change)
+
+    def connectionFactory(self, friend):
+        """
+        Connection factory.
+
+        @rtype: L{Deferred}
+        """
+        c = ClientCreator(reactor, Connection, self.controller, self.verifier)
+        factory = c.getFactory()
+        c.connectWith(
+            SSLConnector, friend.getHost().host, friend.getHost().port,
+            factory, self.contextFactory, 30, None, reactor=reactor
+            )
+        return factory.deferred
+
+    def setListenPort_(self, listenPort):
+        """
+        Set on what port the account listens for connections on.
+        """
+        if self.listeningPort is not None:
+            self.listeningPort.stopListening()
+        self.listeningPort = reactor.listenWith(
+            Port, listenPort, self.factory, self.contextFactory,
+            reactor=reactor
+            )
+        print "listening on port", listenPort
+
+    def dealloc(self):
+        print "stop controller"
+        NSObject.dealloc(self)
 
 
 class CreateAccountModel(NSObject):
@@ -121,16 +209,18 @@ class CreateAccountController(NSWindowController):
                 emailAddress = self.model.email
             sslopt['emailAddress'] = emailAddress
         serialNumber = 1
-        cert = ssl.KeyPair.generate().selfSignedCert(serialNumber,
-                                                     **sslopt)
+        cert = selfSignedCertificate(serialNumber, **sslopt)
         print 'SSL certificate generated:'
         print cert.inspect()
 
         # create the new account
-        account = Account.alloc().initWithName_andCert_(
-            self.model.displayName, cert
+        account = Account.alloc().initAndInsertIntoManagedObjectContext_(
+            self.app.managedObjectContext()
             )
-        self.app.addAccount_(account)
+        account.setCertificate_(cert)
+        account.setName_(self.model.displayName)
+        account.setListenPort_(self.model.listenPort)
+        self.app.startAccountController_(account)
         self.close()
         
     def openIdentityFile_(self, sender):
