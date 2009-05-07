@@ -122,8 +122,65 @@ class PrivateCertificate(NSObject, ssl.PrivateCertificate):
 
 
 class Peer(NSManagedObject):
-    pass
+    """
+    Model class for peers.
 
+    @property certificate: The unique identifying certificate of the peer
+    @type certificate: L{Certificate}
+
+    @property digest: digest of certificate, indexed.
+    @type digest: C{str}
+    """
+
+    def initWithCertificate_insertIntoManagedObjectContext_(self, certificate,
+                                                            context):
+        """
+        Initialize new peer with given parameters and insert it into the
+        specified managed object context.
+        
+        @type certificate: L{Certificate}
+        """
+        self = NSManagedObject.initWithEntity_insertIntoManagedObjectContext_(
+            self, entityFromContext("Peer", context), context
+            )
+        if self is None:
+            return None
+        self.setCertificate_(certificate)
+        return self
+
+    @staticmethod
+    def peerWithDigest_inManagedObjectContext_(digest, context):
+        """
+        Return peer that match given digest.
+        """
+        entity = NSEntityDescription.entityForName_inManagedObjectContext_("Peer", context)
+        request = NSFetchRequest.alloc().init()
+        request.setEntity_(entity)
+        request.setPredicate_(NSPredicate.predicateWithFormat_("digest = %@", digest))
+        peers, error = context.executeFetchRequest_error_(request, None)
+        if not peers or error is not None:
+            return None
+        return peers[0]
+
+    def setCertificate_(self, certificate):
+        """
+        Set certificate for peer.
+        """
+        self.setPrimitiveCertificate_(certificate)
+        self.setDigest_(certificate.digest())
+
+    def registerBytesReceived_(self, bytes):
+        """
+        Return that an amount of bytes has been read.
+        """
+        self.setBytesReceived_(self.bytesReceived() + bytes)
+
+    def registerBytesWritten_(self, bytes):
+        """
+        Register that an amount of bytes has been written.
+        """
+        self.setBytesSent_(self.bytesSent() + bytes)
+    
 
 class Contact(Peer):
 
@@ -136,6 +193,23 @@ class Contact(Peer):
         contact.setName_(name)
         contact.setEmail_(email)
         return contact
+
+    @staticmethod
+    def contactWithDigest_inManagedObjectContext_(digest, context):
+        """
+        Return peer that match given digest.
+        """
+        entity = NSEntityDescription.entityForName_inManagedObjectContext_(
+            "Contact", context
+            )
+        request = NSFetchRequest.alloc().init()
+        request.setEntity_(entity)
+        request.setPredicate_(NSPredicate.predicateWithFormat_("digest = %@", digest))
+        contacts, error = context.executeFetchRequest_error_(request, None)
+        if not contacts or error is not None:
+            return None
+        return contacts[0]
+
 
 
 def entityFromContext(entityName, context):

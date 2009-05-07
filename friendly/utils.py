@@ -1,4 +1,61 @@
+# This file is part of Friendly.
+# Copyright (c) 2009 Johan Rydberg <johan.rydberg@gmail.com>
+#
+# Permission is hereby granted, free of charge, to any person
+# obtaining a copy of this software and associated documentation
+# files (the "Software"), to deal in the Software without
+# restriction, including without limitation the rights to use,
+# copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following
+# conditions:
+#
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+# OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+# HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+# OTHER DEALINGS IN THE SOFTWARE.
+
 import objc
+
+from OpenSSL import SSL, crypto
+
+
+class ContextFactory:
+    """
+    @type cert: L{PrivateCertificate}
+    """
+
+    def __init__(self, cert):
+        self.cert = cert
+        self._context = None
+
+    def cacheContext(self):
+        ctx = SSL.Context(SSL.TLSv1_METHOD)
+        ctx.use_certificate(self.cert.original) # XXX: should have a
+                                                # getter for this
+        ctx.use_privatekey(self.cert.privateKey.original)
+        verifyFlags = SSL.VERIFY_PEER
+        verifyFlags |= SSL.VERIFY_FAIL_IF_NO_PEER_CERT
+        def _trackVerificationProblems(conn,cert,errno,depth,preverify_ok):
+            # retcode is the answer OpenSSL's default verifier would have
+            # given, had we allowed it to run.
+            #print "preverify", preverify_ok
+            return 1 # preverify_ok
+        ctx.set_verify(verifyFlags, _trackVerificationProblems)
+
+        self._context = ctx
+
+    def getContext(self):
+        if not self._context:
+            self.cacheContext()
+        return self._context
 
 
 class KeyValueBindingSupport:

@@ -26,7 +26,6 @@ from Foundation import *
 from AppKit import *
 import random
 from twisted.internet import ssl, reactor
-from OpenSSL import SSL, crypto
 
 from overlay.factory import Factory
 from overlay.connector import Connector
@@ -35,41 +34,66 @@ from overlay.controller import OverlayController
 from overlay.verifier import PublicFriendVerifier
 from overlay.ssl import Connector as SSLConnector, Port, ClientCreator
 
-from friendly.model import Account, selfSignedCertificate
-from friendly.utils import initWithSuper, KeyValueBindingSupport
+from friendly.model import Account, Peer, Contact, selfSignedCertificate
+from friendly.utils import initWithSuper, KeyValueBindingSupport, ContextFactory
 
 
-class ContextFactory:
+class ContactVerifier:
     """
-    @ivar cert:
-    @type cert: L{PrivateCertificate}
+    Friend verifier that is based on Peer and Contact objects in the
+    managed object context of the application.
+
+    @ivar managedObjectContext: the context that holds Peer and
+        Contact objects.
+    @type managedObjectContext: L{NSManagedObjectContext}
+
+    @ivar onlyContacts: C{true} if only contacts are allowed to contact
+      us.
+    @type onlyContacts: C{bool}
     """
 
-    def __init__(self, cert):
-        self.cert = cert
-        self._context = None
+    def __init__(self, managedObjectContext):
+        """
+        Initialize new contact friend verifier.
+        """
+        self.managedObjectContext = managedObjectContext
+        self.onlyContacts = True
 
-    def cacheContext(self):
-        ctx = SSL.Context(SSL.TLSv1_METHOD)
-        ctx.use_certificate(self.cert.original) # XXX: should have a
-                                                # getter for this
-        ctx.use_privatekey(self.cert.privateKey.original)
-        verifyFlags = SSL.VERIFY_PEER
-        verifyFlags |= SSL.VERIFY_FAIL_IF_NO_PEER_CERT
-        def _trackVerificationProblems(conn,cert,errno,depth,preverify_ok):
-            # retcode is the answer OpenSSL's default verifier would have
-            # given, had we allowed it to run.
-            print "preverify", preverify_ok
-            return 1 # preverify_ok
-        ctx.set_verify(verifyFlags, _trackVerificationProblems)
+    def verifyFriend(self, certificate):
+        """
+        Verify that peer providing the given certificate may talk to
+        us.
 
-        self._context = ctx
+        @rtype: C{Deferred}
+        """
+        # create Friendly version of the certificate:
+        certificate = Certificate.alloc().initWithNativeCertificate_(
+            certificate.original
+            )
 
-    def getContext(self):
-        if not self._context:
-            self.cacheContext()
-        return self._context
+        if self.onlyContacts:
+            # If we only allow contacts to speak to us there must be
+            # an existing Contact object in the database for the
+            # certificate.
+            peer = Contact.contactWithDigest_inManagedObjectContext_(
+                certificate.digest(), self.managedObjectContext
+                )
+        else:
+            peer = Peer.peerWithDigest_inManagedObjectContext(
+                certificate.digest(), self.managedObjectContext
+                )
+            if peer is None:
+                # create new peer: FIXME: assumes that alloc and
+                # init... won't fail.
+                peer = Peer.alloc()
+                peer.initWithCertificate_insertIntoManagedObjectContext_(
+                    certificate, self.managedObjectContext
+                    )
 
+        if peer is None:
+            return defer.failure(None)
+
+        return defer.succeed(peer)
 
 
 class AccountController(NSObject):
@@ -80,10 +104,20 @@ class AccountController(NSObject):
 
     @initWithSuper
     def initWithApp_factory_model_(self, app, factory, model):
+        """
+        Initialize a new account controller with the given parameters.
+
+        @param app: The application.
+        @type  app: L{FriendlyAppController}
+        @param factory: transfer factory
+        @type  factory: L{OverlayFactory}
+        @param model: account model
+        @type  model: L{model.Account}
+        """
         self.model = model
 
         # create verifier and context factory
-        self.verifier = PublicFriendVerifier()
+        self.verifier = ContactVerifier(app.managedObjectContext())
         self.contextFactory = ContextFactory(model.certificate())
 
         # start the connectot that is responsible for connecting
@@ -110,7 +144,7 @@ class AccountController(NSObject):
         self.bindingSupport.bind(binding, anObject, keyPath, options)
 
     def observeValueForKeyPath_ofObject_change_context_(self, keyPath, anObject,
-                                                         change, context):
+                                                        change, context):
         self.bindingSupport.observe(keyPath, anObject, change)
 
     def connectionFactory(self, friend):
