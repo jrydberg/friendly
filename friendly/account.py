@@ -25,7 +25,7 @@
 from Foundation import *
 from AppKit import *
 import random
-from twisted.internet import ssl, reactor
+from twisted.internet import ssl, reactor, defer
 
 from overlay.factory import Factory
 from overlay.connector import Connector
@@ -33,8 +33,10 @@ from overlay.connection import Connection
 from overlay.controller import OverlayController
 from overlay.verifier import PublicFriendVerifier
 from overlay.ssl import Connector as SSLConnector, Port, ClientCreator
+from overlay.error import NotAllowedPeerError
 
-from friendly.model import Account, Peer, Contact, selfSignedCertificate
+from friendly.model import (Account, Peer, Contact, selfSignedCertificate,
+                            Certificate, PrivateCertificate)
 from friendly.utils import initWithSuper, KeyValueBindingSupport, ContextFactory
 
 
@@ -79,19 +81,18 @@ class ContactVerifier:
                 certificate.digest(), self.managedObjectContext
                 )
         else:
-            peer = Peer.peerWithDigest_inManagedObjectContext(
+            peer = Peer.peerWithDigest_inManagedObjectContext_(
                 certificate.digest(), self.managedObjectContext
                 )
             if peer is None:
                 # create new peer: FIXME: assumes that alloc and
                 # init... won't fail.
-                peer = Peer.alloc()
-                peer.initWithCertificate_insertIntoManagedObjectContext_(
+                peer = Peer.alloc().initWithCertificate_insertIntoManagedObjectContext_(
                     certificate, self.managedObjectContext
                     )
 
         if peer is None:
-            return defer.failure(None)
+            return defer.fail(NotAllowedPeerError(certificate))
 
         return defer.succeed(peer)
 

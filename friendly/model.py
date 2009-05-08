@@ -52,7 +52,7 @@ class Certificate(NSObject, ssl.Certificate):
 
     @initWithSuper
     def initWithNativeCertificate_(self, original):
-        self.__init__(original)
+        ssl.Certificate.__init__(self, original)
     
     def initWithCoder_(self, coder):
         """
@@ -162,6 +162,12 @@ class Peer(NSManagedObject):
             return None
         return peers[0]
 
+    def touch(self):
+        """
+        Register that the peer has been seen.
+        """
+        self.setLastSeen_(NSDate.date())
+
     def setCertificate_(self, certificate):
         """
         Set certificate for peer.
@@ -173,16 +179,45 @@ class Peer(NSManagedObject):
         """
         Return that an amount of bytes has been read.
         """
-        self.setBytesReceived_(self.bytesReceived() + bytes)
+        self.setReceivedBytes_(self.receivedBytes() + bytes)
 
     def registerBytesWritten_(self, bytes):
         """
         Register that an amount of bytes has been written.
         """
-        self.setBytesSent_(self.bytesSent() + bytes)
+        self.setSentBytes_(self.sentBytes() + bytes)
     
 
 class Contact(Peer):
+    """
+    An known contact.
+
+    Contacts are just like any other peer, except that they have a
+    known identity and that the certificate and endpoint information
+    is gathered through a randevu service.
+
+    @property name: Display name of the context
+    @type name: C{str}
+
+    @property email: E-mail address of contact, used as identity.
+    @type email: C{str}
+    """
+
+    def initWithCertificate_insertIntoManagedObjectContext_(self, certificate,
+                                                            context):
+        """
+        Initialize new contact with given parameters and insert it into the
+        specified managed object context.
+        
+        @type certificate: L{PrivateCertificate}
+        """
+        self = NSManagedObject.initWithEntity_insertIntoManagedObjectContext_(
+            self, entityFromContext("Contact", context), context
+            )
+        if self is None:
+            return None
+        self.setCertificate_(certificate)
+        return self
 
     @staticmethod
     def newWithName_email_inManagedObjectContext_(name, email,
@@ -190,6 +225,8 @@ class Contact(Peer):
         contact = NSEntityDescription.insertNewObjectForEntityForName_inManagedObjectContext_(
             "Contact", managedObjectContext
             )
+        if contact is None:
+            return None
         contact.setName_(name)
         contact.setEmail_(email)
         return contact
